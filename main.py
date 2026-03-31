@@ -1,5 +1,6 @@
 # main.py
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile, File
+import io
 from pydantic import BaseModel, Field
 import joblib
 import pandas as pd
@@ -7,9 +8,14 @@ import numpy as np
 from datetime import date, timedelta
 import os
 
-# Load model & features 
+# Load model, features, required cols 
 MODEL_PATH    = "xgboost_sales_model.pkl"
 FEATURES_PATH = "features_list.pkl"
+REQUIRED_COLS = [
+    'date', 'price', 'stock',
+    'lag_1', 'lag_7', 'lag_14', 'lag_30',
+    'rolling_mean_7', 'rolling_std_7', 'rolling_mean_14'
+]
 
 if not os.path.exists(MODEL_PATH):
     raise RuntimeError(f"Model file not found: {MODEL_PATH}")
@@ -28,7 +34,7 @@ trained on historical Brazilian retail data (2014–2016).
 
 **Model performance:** MAE ~43.8 units/day (↓57% from ARIMA baseline)
 
-**Built by:** [Your Name] — MLOps Portfolio Project
+**Built by:** Dia Naufal-Portofolio Project
     """,
     version="1.0.0",
 )
@@ -126,7 +132,46 @@ def predict(req: PredictRequest):
             "rolling_mean_7": req.rolling_mean_7,
         },
     )
+def build_batch_rows(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.copy()
+    df['date'] = pd.to_datetime(df['date'])
+    df['day']          = df['date'].dt.day
+    df['month']        = df['date'].dt.month
+    df['day_of_week']  = df['date'].dt.dayofweek
+    df['week_of_year'] = df['date'].dt.isocalendar().week.astype(int)
+    df['price_stock']  = df['price'] * df['stock']
+    df['price_lag1']   = df['price']
+    return df[features]
 
+@app.post("/predict-batch", tags=["Forecast"])
+async def predict_batch(file: UploadFile = File(...)):
+    if not file.filename.endswith('.csv'):
+        raise HTTPException(status_code=400, detail="File harus berformat .csv")
+    try:
+        contents = await file.read()
+        df = pd.read_csv(io.StringIO(contents.decode('utf-8')))
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Gagal baca CSV: {str(e)}")
+
+    missing_cols = [c for c in REQUIRED_COLS if c not in df.columns]
+    if missing_cols:
+        raise HTTPException(status_code=422,
+            detail=f"Kolom tidak ada: {missing_cols}. Wajib: {REQUIRED_COLS}")
+    try:
+        X = build_batch_rows(df)
+        preds = np.clip(np.round(model.predict(X)), 0, None).astype(int)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Prediction error: {str(e)}")
+
+    return {
+        "total_rows":    len(df),
+        "model_version": "xgboost-v1.0",
+        "predictions":   [
+            {"date": str(df['date'][i]), "price": df['price'][i],
+             "stock": int(df['stock'][i]), "predicted_sales": int(preds[i])}
+            for i in range(len(df))
+        ]
+    }
 # Run locally 
 if __name__ == "__main__":
     import uvicorn

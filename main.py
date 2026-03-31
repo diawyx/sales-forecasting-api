@@ -28,7 +28,7 @@ trained on historical Brazilian retail data (2014–2016).
 
 **Model performance:** MAE ~43.8 units/day (↓57% from ARIMA baseline)
 
-**Built by:** [Your Name] — MLOps Portfolio Project
+**Built by:** Dia Naufal-Portofolio Project
     """,
     version="1.0.0",
 )

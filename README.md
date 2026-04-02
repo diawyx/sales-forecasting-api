@@ -10,6 +10,7 @@ The system covers the full pipeline — from raw data to a deployed REST API and
 
 **Live API:** [sales-forecasting-api-production.up.railway.app/docs](https://sales-forecasting-api-production.up.railway.app/docs)
 
+> 🚧 **Power BI Dashboard** — currently in progress
 ---
 
 ## 📌 Table of Contents
